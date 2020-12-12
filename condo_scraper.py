@@ -34,8 +34,6 @@ def parsed_condos_html(html):
 			condos.append(split_condo)
 	return condos
 
-def 
-
 total_condos = []
 page_num = 1
 
@@ -113,3 +111,5 @@ for i in range(len(total_condos)):
 df = pd.DataFrame(data, columns=columns)
 
 df.to_csv('condos.csv')
+
+driver.quit()
