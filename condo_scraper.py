@@ -4,8 +4,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.firefox.options import Options
 from bs4 import BeautifulSoup
-import requests
 from dotenv import load_dotenv
 import time
 import pandas as pd
@@ -34,82 +34,92 @@ def parsed_condos_html(html):
 			condos.append(split_condo)
 	return condos
 
-total_condos = []
-page_num = 1
+def get_condos_data(driver):
+	try:
+		total_condos = []
+		page_num = 1
 
-URL = "https://condos.ca/toronto/condos-for-sale?beds=1.1-1.9,1-1&sale_price_range=0,650000&neighbourhood_id=746,751,754,753,752,747,750,748,760,759, \
-       862,755,756,757,758&map_bounds=-79.43009432625107,43.6276717305289,-79.35489993762302,43.67944188260435&size_range=500,999999999"
-driver = webdriver.Chrome()
+		URL = "https://condos.ca/toronto/condos-for-sale?beds=1.1-1.9,1-1&sale_price_range=0,650000&neighbourhood_id=746,751,754,753,752,747,750,748,760,759, \
+			862,755,756,757,758&map_bounds=-79.43009432625107,43.6276717305289,-79.35489993762302,43.67944188260435&size_range=500,999999999"
 
-wait = WebDriverWait(driver, 10)
+		wait = WebDriverWait(driver, 10)
 
-driver.get(URL)
+		driver.get(URL)
 
-wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'Log in')]")))
-login_button = driver.find_element_by_xpath("//button[contains(.,'Log in')]")
+		wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'Log in')]")))
+		login_button = driver.find_element_by_xpath("//button[contains(.,'Log in')]")
 
-login_button.send_keys(Keys.ENTER)
-login_button.send_keys(Keys.ENTER)
-login_button.send_keys(Keys.ENTER)
-login_button.send_keys(Keys.ENTER)
-login_button.send_keys(Keys.ENTER)
-login_button.send_keys(Keys.ENTER)
+		time.sleep(10)
 
-wait.until(EC.element_to_be_clickable((By.ID, "login")))
-username = driver.find_element_by_id("login")
-password = driver.find_element_by_id("password")
+		login_button.click()
 
-username.send_keys(os.getenv("username"))
-password.send_keys(os.getenv("password"))
+		wait.until(EC.element_to_be_clickable((By.ID, "login")))
+		username = driver.find_element_by_id("login")
+		password = driver.find_element_by_id("password")
 
-driver.find_element_by_css_selector("div:nth-child(3) > #appButton").send_keys(Keys.ENTER)
+		username.send_keys(os.getenv("username"))
+		password.send_keys(os.getenv("password"))
 
-time.sleep(10)
+		driver.find_element_by_css_selector("div:nth-child(3) > #appButton").send_keys(Keys.ENTER)
 
-condos_html = driver.page_source
+		time.sleep(10)
+		
+		condos_html = driver.page_source
 
-current_condos_list = parsed_condos_html(condos_html)
+		current_condos_list = parsed_condos_html(condos_html)
 
-total_condos += current_condos_list
-
-page_num = 2
-
-while True:
-	URL = "https://condos.ca/toronto/condos-for-sale?beds=1.1-1.9,1-1&sale_price_range=0,650000&neighbourhood_id=746,751,754,753,752,747,750,748,760,759, \
-              862,755,756,757,758&map_bounds=-79.43009432625107,43.6276717305289,-79.35489993762302,43.67944188260435&size_range=500,999999999&page={page}".format(page=page_num)
-	
-	driver.get(URL)
-	
-	time.sleep(3)
-	
-	condos_html = driver.page_source
-	
-	current_condos_list = parsed_condos_html(condos_html)
-	
-	if not current_condos_list:
-		break
-	else:
 		total_condos += current_condos_list
-		page_num += 1
 
+		page_num = 2
 
+		while True:
+			URL = "https://condos.ca/toronto/condos-for-sale?beds=1.1-1.9,1-1&sale_price_range=0,650000&neighbourhood_id=746,751,754,753,752,747,750,748,760,759, \
+					862,755,756,757,758&map_bounds=-79.43009432625107,43.6276717305289,-79.35489993762302,43.67944188260435&size_range=500,999999999&page={page}".format(page=page_num)
+			
+			driver.get(URL)
+			
+			time.sleep(10)
+			
+			condos_html = driver.page_source
+			
+			current_condos_list = parsed_condos_html(condos_html)
+			
+			if not current_condos_list:
+				break
+			else:
+				total_condos += current_condos_list
+				page_num += 1
+	except Exception as e:
+		driver.quit()
+	
+	return total_condos
 
-data = []
-columns = ['Price', 'Address', 'Bd', 'Ba', 'Parking', 'Sqft', 'Maint. Fee', 'Time on market']
+def condos_to_df(condos):
+	data = []
+	columns = ['Price', 'Address', 'Bd', 'Ba', 'Parking', 'Sqft', 'Maint Fee']
 
-for i in range(len(total_condos)):
-    condo = total_condos[i]
-    condo.pop(-2)
-    condo.pop(1)
-    if (len(condo) == 7):
-        obj = {'Price': condo[0], 'Address': condo[1], 'Bd': condo[2], 'Ba': condo[3], 'Parking': condo[4], 'Sqft': condo[5], 'Time on Market': condo[6]}
-        data.append(obj)
-    else:
-        obj = dict(zip(columns, condo))
-        data.append(obj)
+	for i in range(len(condos)):
+		condo = condos[i]
+		condo = condo[:-2]
+		condo.pop(1)
+		condo[0] = "".join(condo[0][1:].split(','))
+		condo[5] = condo[5][:-5]
+		if (len(condo) == 7):
+			obj = {'Price': condo[0], 'Address': condo[1], 'Bd': condo[2], 'Ba': condo[3], 'Parking': condo[4], 'Sqft': condo[5], 'Maint Fee': condo[6][12:]}
+			data.append(obj)
+		else:
+			obj = dict(zip(columns, condo))
+			data.append(obj)
 
-df = pd.DataFrame(data, columns=columns)
+	df = pd.DataFrame(data, columns=columns)
 
-df.to_csv('condos.csv')
+	return df
 
-driver.quit()
+if __name__ == '__main__':
+	firefox_options = Options()
+	# firefox_options.add_argument("--headless")
+	driver = webdriver.Firefox(options=firefox_options)
+	condos = get_condos_data(driver)
+	df = condos_to_df(condos)
+	df.to_csv('condos.csv')
+	driver.quit()

@@ -8,6 +8,8 @@ bs4 = "*"
 requests = "*"
 selenium = "*"
 python-dotenv = "*"
+sqlalchemy = "*"
+pandas = "*"
 
 [dev-packages]
 
