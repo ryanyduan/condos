@@ -5,6 +5,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.firefox.options import Options
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementNotVisibleException, ElementNotInteractableException
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import time
@@ -89,10 +90,13 @@ def get_condos_data(driver):
 			else:
 				total_condos += current_condos_list
 				page_num += 1
-	except Exception as e:
-		driver.quit()
+		
+		return total_condos
 	
-	return total_condos
+	except (TimeoutException, NoSuchElementException, ElementNotVisibleException, ElementNotInteractableException):
+		return -1
+	except:
+		return -2
 
 def condos_to_df(condos):
 	data = []
@@ -116,10 +120,19 @@ def condos_to_df(condos):
 	return df
 
 if __name__ == '__main__':
+	REDO_ATTEMPTS = 0
+	MAX_ATTEMPTS = 3
 	firefox_options = Options()
-	# firefox_options.add_argument("--headless")
+	firefox_options.add_argument("--headless")
 	driver = webdriver.Firefox(options=firefox_options)
-	condos = get_condos_data(driver)
+	while (condos := get_condos_data(driver)) == -1 and REDO_ATTEMPTS < MAX_ATTEMPTS:
+		condos = get_condos_data(driver)
+		REDO_ATTEMPTS += 1
+	
+	if condos == -1 or condos == -2:
+		# Send Email
+		pass
+
 	df = condos_to_df(condos)
 	df.to_csv('condos.csv')
 	driver.quit()
