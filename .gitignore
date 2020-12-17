@@ -2,3 +2,4 @@
 .DS_Store
 condo*.csv
 geckodriver.log
+tester.py
