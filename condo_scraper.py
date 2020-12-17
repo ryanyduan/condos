@@ -1,4 +1,5 @@
 import os
+import sys
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -100,7 +101,15 @@ def get_condos_data(driver):
 
 def condos_to_df(condos):
 	data = []
-	columns = ['Price', 'Address', 'Bd', 'Ba', 'Parking', 'Sqft', 'Maint Fee']
+	columns = [
+			   'Address',
+			   'Bd',
+			   'Ba',
+			   'Parking',
+			   'Sqft',
+			   'Maint Fee'
+			   'Price',
+			   ]
 
 	for i in range(len(condos)):
 		condo = condos[i]
@@ -109,15 +118,50 @@ def condos_to_df(condos):
 		condo[0] = "".join(condo[0][1:].split(','))
 		condo[5] = condo[5][:-5]
 		if (len(condo) == 7):
-			obj = {'Price': condo[0], 'Address': condo[1], 'Bd': condo[2], 'Ba': condo[3], 'Parking': condo[4], 'Sqft': condo[5], 'Maint Fee': condo[6][12:]}
+			obj = {
+				'Price': condo[0],
+				'Address': condo[1],
+				'Bd': condo[2],
+				'Ba': condo[3],
+				'Parking': condo[4],
+				'Sqft': condo[5],
+				'Maint Fee': condo[6][12:]
+				}
 			data.append(obj)
 		else:
 			obj = dict(zip(columns, condo))
 			data.append(obj)
 
 	df = pd.DataFrame(data, columns=columns)
+	df['Price'] = pd.to_numeric(df['Price'])
 
 	return df
+
+def is_scrape_failed(condos):
+	if condos == -1 or condos == -2:
+		return True
+	return False
+
+def calculate_max_price(row):
+    max_price = row.get('Max_Price')
+    if pd.isnull(max_price):
+        return row.get('Price')
+    else:
+        return max(row.get('Price'), row.get('Max_Price'))
+
+def calculate_daily_change(row):
+    if not pd.isnull(yesterday_price := row.get('Yesterday_Price')):
+        return row.get('Price') - yesterday_price
+    else:
+        return 'New'
+
+def merge_dfs(today_df, yesterday_df):
+	yesterday_df = yesterday_df.rename({'Price': 'Yesterday_Price'}, axis='columns')
+	yesterday_df['Yesterday_Price'] = pd.to_numeric(yesterday_df['Yesterday_Price'])
+	new_df = today_df.merge(yesterday_df[['Yesterday_Price', 'Address']], on='Address', how='left')
+	new_df['Max_Price'] = new_df.apply(lambda row: calculate_max_price(row), axis=1)
+	new_df['Daily_Change'] = new_df.apply(lambda row: calculate_daily_change(row), axis=1)
+	return new_df
 
 if __name__ == '__main__':
 	REDO_ATTEMPTS = 0
@@ -129,10 +173,17 @@ if __name__ == '__main__':
 		condos = get_condos_data(driver)
 		REDO_ATTEMPTS += 1
 	
-	if condos == -1 or condos == -2:
+	if is_scrape_failed(condos):
 		# Send Email
-		pass
+		driver.quit()
+		sys.exit(-1)
 
 	df = condos_to_df(condos)
-	df.to_csv('condos.csv')
+	
+	if not (yesterday_df := pd.read_csv('condos.csv')).empty if os.path.exists('condos.csv') else None:
+		new_df = merge_dfs(df, yesterday_df)
+		new_df.to_csv('condos.csv')
+	else:
+		df.to_csv('condos.csv')
+
 	driver.quit()
