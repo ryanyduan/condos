@@ -3,3 +3,5 @@
 condo*.csv
 geckodriver.log
 tester.py
+credentials.json
+token.pickle
