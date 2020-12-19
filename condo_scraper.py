@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import time
 import pandas as pd
+from gmail import Gmail
+import json
 
 load_dotenv()
 
@@ -94,21 +96,21 @@ def get_condos_data(driver):
 		
 		return total_condos
 	
-	except (TimeoutException, NoSuchElementException, ElementNotVisibleException, ElementNotInteractableException):
-		return -1
+	except (TimeoutException, NoSuchElementException, ElementNotVisibleException, ElementNotInteractableException) as e:
+		return (-1, e)
 	except:
-		return -2
+		return (-2, e)
 
 def condos_to_df(condos):
 	data = []
 	columns = [
+			   'Price',
 			   'Address',
 			   'Bd',
 			   'Ba',
 			   'Parking',
 			   'Sqft',
 			   'Maint Fee'
-			   'Price',
 			   ]
 
 	for i in range(len(condos)):
@@ -164,6 +166,11 @@ def merge_dfs(today_df, yesterday_df):
 	return new_df
 
 if __name__ == '__main__':
+	with open('config.json') as file:
+		config = json.load(file)
+	
+	emailserver = Gmail(config.get('senderAddress'))
+	
 	REDO_ATTEMPTS = 0
 	MAX_ATTEMPTS = 3
 	firefox_options = Options()
@@ -174,7 +181,7 @@ if __name__ == '__main__':
 		REDO_ATTEMPTS += 1
 	
 	if is_scrape_failed(condos):
-		# Send Email
+		emailserver.create_message_with_attachment(recipients=config.get('primaryEmail'), error=condos, sendAttachment=False).send_message()
 		driver.quit()
 		sys.exit(-1)
 
@@ -185,5 +192,7 @@ if __name__ == '__main__':
 		new_df.to_csv('condos.csv')
 	else:
 		df.to_csv('condos.csv')
+	
+	emailserver.create_message_with_attachment(recipients=", ".join(config.get('recipients')), sendAttachment=True).send_message()
 
 	driver.quit()
