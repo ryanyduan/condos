@@ -13,8 +13,10 @@ import time
 import pandas as pd
 from gmail import Gmail
 import json
+from apscheduler.schedulers.blocking import BlockingScheduler
 
 load_dotenv()
+sched = BlockingScheduler()
 
 def is_valid_condo_listing(condo):
     return "Create an account" not in condo and len(condo) >= 8 and condo[0] is not None
@@ -38,13 +40,10 @@ def parsed_condos_html(html):
 			condos.append(split_condo)
 	return condos
 
-def get_condos_data(driver):
+def get_condos_data(driver, URL):
 	try:
 		total_condos = []
 		page_num = 1
-
-		URL = "https://condos.ca/toronto/condos-for-sale?beds=1.1-1.9,1-1&sale_price_range=0,650000&neighbourhood_id=746,751,754,753,752,747,750,748,760,759, \
-			862,755,756,757,758&map_bounds=-79.43009432625107,43.6276717305289,-79.35489993762302,43.67944188260435&size_range=500,999999999"
 
 		wait = WebDriverWait(driver, 10)
 
@@ -158,6 +157,7 @@ def calculate_daily_change(row):
         return 'New'
 
 def merge_dfs(today_df, yesterday_df):
+	yesterday_df.drop(columns='Yesterday_Price', inplace=True)
 	yesterday_df = yesterday_df.rename({'Price': 'Yesterday_Price'}, axis='columns')
 	yesterday_df['Yesterday_Price'] = pd.to_numeric(yesterday_df['Yesterday_Price'])
 	new_df = today_df.merge(yesterday_df[['Yesterday_Price', 'Address']], on='Address', how='left')
@@ -165,7 +165,9 @@ def merge_dfs(today_df, yesterday_df):
 	new_df['Daily_Change'] = new_df.apply(lambda row: calculate_daily_change(row), axis=1)
 	return new_df
 
-if __name__ == '__main__':
+
+@sched.scheduled_job('cron', day_of_week='mon-sun', hour=9)
+def scheduled_job():
 	with open('config.json') as file:
 		config = json.load(file)
 	
@@ -176,8 +178,8 @@ if __name__ == '__main__':
 	firefox_options = Options()
 	firefox_options.add_argument("--headless")
 	driver = webdriver.Firefox(options=firefox_options)
-	while (condos := get_condos_data(driver)) == -1 and REDO_ATTEMPTS < MAX_ATTEMPTS:
-		condos = get_condos_data(driver)
+	while (condos := get_condos_data(driver, URL=config.get('URL'))) == -1 and REDO_ATTEMPTS < MAX_ATTEMPTS:
+		condos = get_condos_data(driver, URL=config.get('URL'))
 		REDO_ATTEMPTS += 1
 	
 	if is_scrape_failed(condos):
@@ -196,3 +198,5 @@ if __name__ == '__main__':
 	emailserver.create_message_with_attachment(recipients=", ".join(config.get('recipients')), sendAttachment=True).send_message()
 
 	driver.quit()
+
+sched.start()
